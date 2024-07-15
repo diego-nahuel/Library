@@ -218,6 +218,15 @@ const FetchApi = () => {
           ))}
         </div>
       )}
+      {books.length === 0 && <div className="load-contain">
+          <div className="loader">
+            <div className="book-load">
+              <div className="page" />
+              <div className="page page2" />
+            </div>
+          </div>
+        </div>
+      }
     </div>
   );
 };
