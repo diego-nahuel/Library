@@ -235,6 +235,57 @@ body {
   cursor: pointer;
 }
 
+.load-contain {
+  display: flex;
+  justify-content: center;
+  align-items: end;
+  height: 20em;
+}
+
+.loader {
+  width: fit-content;
+  height: fit-content;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  --book-color: #fff;
+  --book-cover-color: #16232f;
+}
+.book-load {
+  width: 200px;
+  height: 15px;
+  background-color: var(--book-color);
+  border-bottom: 4px solid var(--book-cover-color);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  position: relative;
+}
+.page {
+  width: 50%;
+  height: 3px;
+  background-color: var(--book-color);
+  animation: paging 0.7s ease-out infinite;
+  transform-origin: left;
+}
+.page2 {
+  width: 50%;
+  height: 2px;
+  background-color: var(--book-color);
+  animation: paging 0.8s ease-out infinite;
+  transform-origin: left;
+  position: absolute;
+}
+@keyframes paging {
+  10% {
+    transform: rotateZ(0deg);
+  }
+  100% {
+    transform: rotateZ(-180deg);
+  }
+}
+
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
