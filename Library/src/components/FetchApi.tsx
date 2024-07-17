@@ -8,6 +8,16 @@ interface Book {
   first_publish_year: number;
   key: string;
   inFavorites?: boolean;
+  read?: boolean;
+}
+
+interface FavoritesApi {
+  _id: string,
+  name: string,
+  code: string,
+  details: {cover_i: number, author: string[], year: number},
+  active: boolean,
+  delete: boolean,
 }
 
 const FetchApi = () => {
@@ -19,58 +29,65 @@ const FetchApi = () => {
   const [searchType, setSearchType] = useState("title");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [favorites, setFavorites] = useState<{ [key: string]: boolean }>({});
+  const [favorites, setFavorites] = useState<Book[]>([]);
 
   useEffect(() => {
     axios.post(`${FAVORITES_URL}get/all`).then((response) => {
       const data = response.data;
-      const favoriteBooks = data.reduce(
-        (acc: { [key: string]: boolean }, book: Book) => {
-          acc[book.key] = true;
-          return acc;
-        },
-        {}
-      );
-      setFavorites(favoriteBooks);
-    });
+      const favoriteBooks =  data.map((book: FavoritesApi) => ({
+        cover_i: book.details.cover_i,
+        title: book.name,
+        author_name: book.details.author,
+        first_publish_year: book.details.year,
+        key: book._id,
+        inFavorites: true,
+        read: book.active
+      }))
+      setFavorites(favoriteBooks)
+    }).catch ((error) => {
+      // setError("Error fetching favorites")
+      console.error(error)
+    })
   }, []);
-
-  // const fetchFavorites = async () => {
-  //   try {
-  //     const response = await axios.get(`${FAVORITES_URL}get/all`);
-  //     const data = response.data;
-  //     const favoriteBooks = data.reduce(
-  //       (acc: { [key: string]: boolean }, book: Book) => {
-  //         acc[book.key] = true;
-  //         return acc;
-  //       },
-  //       {}
-  //     );
-  //     setFavorites(favoriteBooks);
-  //   } catch (error) {
-  //     console.error("Error fetching favorites:", error);
-  //   }
-  // };
 
   const searchBook = async () => {
     setLoading(true);
-    const query = inputSearch.toLowerCase().replace(/\s+/g, "+");
 
     try {
-      const response = await fetch(`${SEARCH_URL}?${searchType}=${query}`);
-      if (!response.ok) {
-        throw new Error("Error de concección");
-      }
-      const data = await response.json();
-      if (data.docs === 0) {
-        setError("No se encontraron libros");
+      if (searchType === "favorites") {
+        const filteredFavorites = favorites.filter((book) => book.title.toLowerCase().includes(inputSearch.toLocaleLowerCase()));
+        
+        setBooks(filteredFavorites);
+        setError(filteredFavorites.length === 0 ?
+          "No se encontraron libros" : null
+        )
       } else {
-        const updatedBooks = data.docs.map((book: Book) => ({
-          ...book,
-          inFavorites: favorites[book.key] || false,
-        }));
-        setBooks(updatedBooks);
-        setError(null);
+        const query = inputSearch.toLowerCase().replace(/\s+/g, "+");
+        const response = await fetch(`${SEARCH_URL}?${searchType}=${query}`);
+        if (!response.ok) {
+          throw new Error("Error de concección");
+        }
+        const data = await response.json();
+        if (data.docs === 0) {
+          setError("No se encontraron libros");
+        } else {
+          const updatedBooks = data.docs.map((book: Book) => {
+            const isInFavorites = favorites.some((fav) => fav.key === book.key);
+            const isRead = isInFavorites ? favorites.find((fav) => fav.key === book.key)?.read : false;
+
+            return {
+              cover_i: book.cover_i,
+              title: book.title,
+              author_name: book.author_name,
+              first_publish_year: book.first_publish_year,
+              key: book.key,
+              inFavorites: isInFavorites,
+              read: isRead
+            }
+          });
+          setBooks(updatedBooks);
+          setError(null);
+        }
       }
     } catch (error) {
       setError("Error en la búsqueda");
@@ -85,43 +102,28 @@ const FetchApi = () => {
     }
   };
 
+  const coverUrl = (cover_i: number) => `https://covers.openlibrary.org/b/id/${cover_i}-M.jpg`;
+
   const addFavorite = async (book: Book) => {
     axios
       .post(`${FAVORITES_URL}create`, {
         _id: book.key,
         name: book.title,
         code: book.key,
-        details: book,
-        active: true,
+        details: {cover_i: book.cover_i, author: book.author_name, year: book.first_publish_year},
+        active: book.read,
         delete: false,
       })
       .then(function (response) {
         console.log(response);
-        setFavorites((prev) => ({ ...prev, [book.key]: true }));
+        setFavorites((prevFavorites) => [
+          ...prevFavorites,
+          { ...book, inFavorites: true },
+        ]);
       })
       .catch(function (error) {
         console.log(error);
       });
-
-    // try {
-    //   const response = await fetch(`http://192.168.0.246:6000/test/create`, {
-    //     method: "POST",
-    //     body: JSON.stringify({
-    //       _id: book.key,
-    //       name: book.title,
-    //       code: book.key,
-    //       details: book,
-    //       active: true,
-    //       delete: false,
-    //     }),
-    //   });
-    //   if (!response.ok) {
-    //     throw new Error("Error al añadir a favoritos");
-    //   }
-    //   setFavorites((prev) => ({ ...prev, [book.key]: true }));
-    // } catch (error) {
-    //   console.error(error);
-    // }
   };
 
   const removeFavorite = async (book: Book) => {
@@ -131,43 +133,39 @@ const FetchApi = () => {
       })
       .then(function (response) {
         console.log(response);
-        setFavorites((prev) => {
-          const updated = { ...prev };
-          delete updated[book.key];
-          return updated;
-        });
+        setFavorites((prevFavorites) =>
+          prevFavorites.filter((fav) => fav.key !== book.key))
       })
       .catch(function (error) {
         console.log(error);
       });
-
-    // try {
-    //   const response = await fetch(`${FAVORITES_URL}/delete`, {
-    //     method: "DELETE",
-    //     headers: { "Content-Type": "aplication/json" },
-    //     body: JSON.stringify({
-    //       _id: book.key,
-    //     }),
-    //   });
-    //   if (!response.ok) {
-    //     throw new Error("Error al eliminar de favoritos");
-    //   }
-    //   setFavorites((prev) => {
-    //     const updated = { ...prev };
-    //     delete updated[book.key];
-    //     return updated;
-    //   });
-    // } catch (error) {
-    //   console.error(error);
-    // }
   };
 
   const handleFavorite = (book: Book) => {
-    favorites[book.key] ? removeFavorite(book) : addFavorite(book);
+    book.inFavorites ? removeFavorite(book) : addFavorite(book);
   };
 
-  const coverUrl = (cover_i: number) =>
-    `https://covers.openlibrary.org/b/id/${cover_i}-M.jpg`;
+  const markAsRead = async (book: Book) => {
+    try {
+      const response = await axios.post(`${FAVORITES_URL}change/active`, {
+        _id: book.key,
+        active: !book.read
+      });
+
+      if(response.status === 200) {
+        setFavorites((prevFavorites) =>
+          prevFavorites.map((fav) =>
+          fav.key === book.key ? { ...fav, read: !book.read } : fav )
+        );
+        setBooks((prevBooks) =>
+          prevBooks.map((b) =>
+          b.key === book.key ? { ...b, read: !book.read } : b )
+        );
+      }
+    } catch (error) {
+      console.error("Error marcando como leído")
+    }
+  }
 
   return (
     <div>
@@ -181,7 +179,9 @@ const FetchApi = () => {
             <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
           </svg>
           <input
-            placeholder="¿Qué quieres leer?"
+            placeholder={searchType === "favorites"?
+               "Buscar en favoritos" 
+            : "Explora en la librería"}
             value={inputSearch}
             onChange={(e) => setInputSearch(e.target.value)}
             onKeyDown={handleEnter}
@@ -194,9 +194,9 @@ const FetchApi = () => {
             type="checkbox"
             className="check"
             id="check1-61"
-            checked={searchType === "author"}
+            checked={searchType === "favorites"}
             onChange={(e) =>
-              setSearchType(e.target.checked ? "author" : "title")
+              setSearchType(e.target.checked ? "favorites" : "title")
             }
           />
           <label
@@ -224,13 +224,13 @@ const FetchApi = () => {
                 />
               </g>
             </svg>
-            <span className="check-autor">Autor</span>
+            <span className="check-autor">Favoritos</span>
           </label>
         </div>
       </div>
       <div className="message">
         {loading && <h3>Buscando...</h3>}
-        {error && <h3>{error}</h3>}
+        {error && !loading && <h3>{error}</h3>}
       </div>
       {books.length > 0 && !loading && (
         <div className="cards-container">
@@ -257,54 +257,54 @@ const FetchApi = () => {
                   <h5>Año: {book.first_publish_year}</h5>
                 </div>
                 <div className="fav-contain">
-                  <div
-                    className="fav-icon"
-                    onClick={() => handleFavorite(book)}>
-                    {favorites[book.key] ? (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width={24}
-                        height={24}
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="icon icon-tabler icons-tabler-filled icon-tabler-bookmark">
-                        <path
-                          stroke="none"
-                          d="M0 0h24v24H0z"
-                          fill="none"
-                        />
-                        <path d="M14 2a5 5 0 0 1 5 5v14a1 1 0 0 1 -1.555 .832l-5.445 -3.63l-5.444 3.63a1 1 0 0 1 -1.55 -.72l-.006 -.112v-14a5 5 0 0 1 5 -5h4z" />
-                        <title>Eliminar de favoritos</title>
+                  <label className="ui-bookmark">
+                    <input
+                      type="checkbox"
+                      checked={book.inFavorites}
+                      onChange={() => handleFavorite(book)}
+                    />
+                    <div className="bookmark">
+                      <svg viewBox="0 0 32 32">
+                        <g>
+                          <path d="M27 4v27a1 1 0 0 1-1.625.781L16 24.281l-9.375 7.5A1 1 0 0 1 5 31V4a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4z" />
+                        </g>
                       </svg>
-                    ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width={24}
-                        height={24}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="icon icon-tabler icons-tabler-outline icon-tabler-bookmark">
-                        <path
-                          stroke="none"
-                          d="M0 0h24v24H0z"
-                          fill="none"
-                        />
-                        <path d="M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4z" />
-                        <title>Agregar a favoritos</title>
-                      </svg>
-                    )}
-                  </div>
+                    </div>
+                  </label>
+                </div>
+                <div className="mark-as-read">
+                  <label className="container-eye">
+                    <input
+                      type="checkbox"
+                      checked={book.read}
+                      onChange={() => markAsRead(book)}
+                    />
+                    <svg
+                      className="eye"
+                      xmlns="http://www.w3.org/2000/svg"
+                      height="0.7em"
+                      viewBox="0 0 576 512"
+                    >
+                      <title>Marcar como no leído</title>
+                      <path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM144 256a144 144 0 1 1 288 0 144 144 0 1 1 -288 0zm144-64c0 35.3-28.7 64-64 64c-7.1 0-13.9-1.2-20.3-3.3c-5.5-1.8-11.9 1.6-11.7 7.4c.3 6.9 1.3 13.8 3.2 20.7c13.7 51.2 66.4 81.6 117.6 67.9s81.6-66.4 67.9-117.6c-11.1-41.5-47.8-69.4-88.6-71.1c-5.8-.2-9.2 6.1-7.4 11.7c2.1 6.4 3.3 13.2 3.3 20.3z" />
+                    </svg>
+                    <svg
+                      className="eye-slash"
+                      xmlns="http://www.w3.org/2000/svg"
+                      height="0.7em"
+                      viewBox="0 0 640 512"
+                    >
+                      <title>Marcar como leído</title>
+                      <path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c8.4-19.3 10.6-41.4 4.8-63.3c-11.1-41.5-47.8-69.4-88.6-71.1c-5.8-.2-9.2 6.1-7.4 11.7c2.1 6.4 3.3 13.2 3.3 20.3c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zM373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5L373 389.9z" />
+                    </svg>
+                  </label>
                 </div>
               </div>
             </div>
           ))}
         </div>
       )}
-      {books.length === 0 && (
+      {favorites.length === 0 && books.length === 0 && (
         <div className="load-contain">
           <div className="loader">
             <div className="book-load">
@@ -313,7 +313,8 @@ const FetchApi = () => {
             </div>
           </div>
         </div>
-      )}
+      )
+    }
     </div>
   );
 };
